@@ -53,11 +53,19 @@ local battery_life = tonumber(minetest.settings:get("flashlight_battery_life")) 
 local battery_drain = math.floor(65535 / (battery_life * 60)) * 5
 local dist = tonumber(minetest.settings:get("flashlight_strength")) or 100
 
-local function use_battery(stack)
-	if stack:get_wear() >= (65535 - battery_drain) then
+local function use_battery(stack, player)
+	local meta = stack:get_meta()
+	local charge = meta:get_int("technic:charge")
+	minetest.chat_send_all("Battery charge: " .. charge)
+	if charge < battery_drain then
 		stack:set_name("goodtorch:flashlight_off")
+		charge = 0
+		meta:set_int("technic:charge", charge)
 		return false
 	end
+
+	meta:set_int("technic:charge", charge - battery_drain)
+	technic.set_RE_wear(stack, meta:get_int("technic:charge"), battery_life)
 
 	local props = player:get_properties()
 	--minetest.log("action", "[goodtorch] "..minetest.serialize(props))
@@ -139,20 +147,6 @@ local function light_name(pos, factor)
 	end
 end
 
---[[
-local function update_inv(player)
-	for i=1, inv:get_size("main") do
-		local stack = inv:get_stack("main", i)
-		if stack:get_name() == "goodtorch:flashlight_on" then
-			local success = use_battery(stack)
-			inv:set_stack("main", i, stack)
-			if not success then
-					return
-			end
-		end	
-	end
-end
-]]
 
 -- I have to go to sleep because I'll go to university tomorrow, and this 
 -- function doesn't really do much yet, so I'll
@@ -276,21 +270,6 @@ local function update_illumination(player)
 	remove_light(old_pos)
 	goodtorch.player_lights[name].pos = nil
 end
-
--- local timer = 0
-
---[[
-minetest.register_globalstep(function(dtime)
-	timer = timer + dtime
-	if timer < 5 then return end
-	timer = 0
-	for _, player in pairs(minetest.get_connected_players()) do
-		if not minetest.is_creative_enabled(player:get_player_name()) then
-			update_inv(player)
-		end
-	end
-end)
-]]
 
 minetest.register_globalstep(function()
 	for _, player in pairs(minetest.get_connected_players()) do
@@ -531,6 +510,15 @@ end
 
 local function flashlight_toggle(stack)
 	if stack:get_name() == "goodtorch:flashlight_off" then
+		if has_technic then
+			local meta = stack:get_meta()
+			local charge = meta:get_int("technic:charge")
+			if charge < battery_drain then
+				minetest.chat_send_all("Your flashlight's battery is empty!"..
+						tonumber(charge))
+				return stack
+			end
+		end
 		minetest.sound_play("goodtorch_on")
 		stack:set_name("goodtorch:flashlight_on")
 	else
@@ -540,7 +528,7 @@ local function flashlight_toggle(stack)
 	return stack
 end
 
-minetest.register_craftitem("goodtorch:flashlight_off", {
+minetest.register_tool("goodtorch:flashlight_off", {
 	description = "Flashlight (off)",
 	inventory_image = "goodtorch_flashlight_off.png",
 	on_place = flashlight_toggle,
@@ -551,7 +539,7 @@ minetest.register_craftitem("goodtorch:flashlight_off", {
 	},
 })
 
-minetest.register_craftitem("goodtorch:flashlight_on", {
+minetest.register_tool("goodtorch:flashlight_on", {
 	description = "Flashlight (on)",
 	inventory_image = "goodtorch_flashlight_on.png",
 	on_place = flashlight_toggle,
@@ -561,6 +549,45 @@ minetest.register_craftitem("goodtorch:flashlight_on", {
 		flash_light = 1,
 	},
 })
+
+-- Technic Spesific Stuff
+if has_technic then
+	minetest.override_item("goodtorch:flashlight_on", {
+		wear_represents = "technic_RE_charge",
+		on_refill = technic.refill_RE_charge,
+	})
+	minetest.override_item("goodtorch:flashlight_off", {
+		wear_represents = "technic_RE_charge",
+		on_refill = technic.refill_RE_charge
+	})
+	technic.register_power_tool("goodtorch:flashlight_on", battery_life)
+	technic.register_power_tool("goodtorch:flashlight_off", battery_life)
+	local function update_inv(player)
+		local inv = player:get_inventory()
+		for i=1, inv:get_size("main") do
+			local stack = inv:get_stack("main", i)
+			if stack:get_name() == "goodtorch:flashlight_on" then
+				local success = use_battery(stack, player)
+				inv:set_stack("main", i, stack)
+				if not success then
+					return
+				end
+			end	
+		end
+	end
+	local timer = 0.0
+
+	minetest.register_globalstep(function(dtime)
+		timer = timer + dtime
+		if timer < 1.0 then return end
+		timer = 0.0
+		for _, player in pairs(minetest.get_connected_players()) do
+			if not minetest.is_creative_enabled(player:get_player_name()) then
+				update_inv(player)
+			end
+		end
+	end)
+end
 
 -- Chance the recipe based on gamemode (assume Minetest Game first)
 local mese_crystal_fragment = "default:mese_crystal_fragment"
