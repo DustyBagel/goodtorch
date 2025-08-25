@@ -1,0 +1,8 @@
+# No Description Available.
+flashlight_drain_inventory (Flashlight Drain Inventory) bool true
+
+# The maximum amount of power that a flashlight holds in EU's.
+flashlight_battery_life (Flashlight Max Charge) int 130 0 65535
+
+# The maximum distance that a flashlight can light up in nodes.
+flashlight_strength (Flashlight Strength) int 100 1 500
